@@ -1,28 +1,10 @@
-function out = xel( y, l, theta, u, sys )
-% Estimated received signal that's corrupted by White Gaussian noise along
-% the 'l'th path . See SAGE paper (13)
-
-% y: received signal with noise corruption after superposition
-% theta: parameters of all paths
-% u: transmitted signal
-
-fs = sys.fs;
-M = sys.M;
-d = sys.d;
-L = sys.L;
-
-beta = 1;
-
-% out = zeros(M, length(u));
-sig = cell(L, 1);
-summation = zeros(M, length(u));
-for i = 1:L
-    sig{i} = s( theta(i), u, sys );
-    summation = summation + sig{i};
+function out = xel(y, l, theta, u, sys)
+%XEL beta=1 hidden-data mean; y N-by-M, out M-by-N.
+assert(isequal(size(y),[numel(u),sys.M]),'SAGE:ObservationSize', ...
+    'y must be N-by-M, with N=numel(u).');
+assert(l >= 1 && l <= sys.L && l == fix(l),'SAGE:PathIndex','Invalid path index.');
+out = y.';
+for k = 1:sys.L
+    if k ~= l, out = out-s(theta(k),u,sys); end
 end
-
-out = sig{l} + beta*(y' - summation);
-
-
 end
-

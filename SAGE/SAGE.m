@@ -1,101 +1,70 @@
-function theta_out = SAGE( y, u, theta, sys )
-% Main phase of SAGE algorithm
-%
-% y: superimposed received signal
-% u: transmitted signal
-% theta: intialized channel parameters
-% sys: system information
-%
-% theta_out: result of estimated channel parameters
-
-L = sys.L;
-d = sys.d;
-M = sys.M;
-I = sys.I;
-Ta = sys.Ta;
-fs = sys.fs;
-lena = round(Ta*fs);
-
-distance = inf;
-threshold = 1e-3;
-miu = 0;
-miumax = 10;
-
-theta_temp = theta;
-% while distance >= threshold && miu <= miumax
-while miu < miumax
-    
-    miu = miu+1
-    theta_last = theta_temp;
-    for l = 1:L
-        xel_last = xel( y, l, theta, u, sys );
-        
-        % Estimate time delay tau
-        c = zeros(M,1);
-        for m = 1:M
-            c(m) = exp(1i*2*pi*(m-1)*d*cos(theta_temp(l).phi));
+function [theta_out, history] = SAGE(y, u, theta, sys, options)
+%SAGE Sequential profiled least-squares SAGE for complex baseband samples.
+% y N-by-M; u known N-sample pilot. See README_SAGE.md for units/options.
+% The original four-argument, single-output interface remains valid.
+% history includes iteration zero, all parameters, and observed residual SSE.
+if nargin < 5, options = struct(); end
+cfg = sage_config(u, sys, options);
+sage_validate_y(y, cfg);
+sage_validate_theta(theta, sys, cfg);
+u = u(:);
+theta_out = theta(:);
+for l = 1:sys.L
+    theta_out(l).tau = round(theta_out(l).tau*sys.fs)/sys.fs;
+end
+Y = y(cfg.idx,:).'; % transpose orientation WITHOUT conjugating the data
+model = zeros(size(Y));
+paths = cell(sys.L,1);
+for l = 1:sys.L
+    paths{l} = sage_atom(theta_out(l), u, sys, cfg);
+    model = model + paths{l};
+end
+residual = Y-model;
+history.objective = nan(cfg.options.maxIter+1,1);
+history.relativeImprovement = nan(cfg.options.maxIter+1,1);
+history.parameterStep = nan(cfg.options.maxIter+1,1);
+history.theta = cell(cfg.options.maxIter+1,1);
+history.objective(1) = sum(abs(residual(:)).^2);
+history.theta{1} = theta_out;
+history.converged = false;
+history.stopReason = 'maxIter';
+dataEnergy = max(sum(abs(Y(:)).^2), realmin);
+for iteration = 1:cfg.options.maxIter
+    previous = theta_out;
+    for l = 1:sys.L
+        % beta=1: CURRENT other paths, including updates from this sweep.
+        X = residual + paths{l};
+        candidate = sage_fit_path(X, theta_out(l), u, sys, cfg);
+        newPath = sage_atom(candidate, u, sys, cfg);
+        newResidual = X-newPath;
+        % Current coordinates are always candidates, so an increase is not
+        % expected mathematically. Reject numerical increases as a safeguard.
+        if sum(abs(newResidual(:)).^2) <= sum(abs(residual(:)).^2)
+            theta_out(l) = candidate;
+            paths{l} = newPath;
+            residual = newResidual;
         end
-        
-        taumax = 4e-6;
-        tau = linspace(0,taumax,500);
-        theta_t = theta_temp;
-        for i = 1:length(tau)
-            theta_t(l).tau = tau(i);
-            z(i) = abs(zfun( xel_last, c, u, theta_t(l), sys ));
-        end
-        [~,Itau] = max(z);
-        tau_e = tau(Itau);
-        theta_temp(l).tau = tau_e;
-        
-        % Estimate DoA phi
-        phimax = 2*pi;
-        phi = linspace(0,phimax,5);
-        
-        cphi = zeros(M,length(phi));
-        theta_t = theta_temp;
-        for j = 1:length(phi)
-            theta_t(l).phi = phi(j);
-            for m = 1:M
-                cphi(m,j) = exp(1i*2*pi*(m-1)*d*cos(theta_t(l).phi));
-            end
-            
-            z(j) = abs(zfun( xel_last, cphi(:,j), u, theta_t(l), sys ));
-        end
-        [~, Iphi] = max(z);
-        phi_e = phi(Iphi);
-        theta_temp(l).phi = phi_e;
-        
-        % Estimate doppler frequency fdopp
-        fdmax = 10;
-        fd = linspace(0,fdmax,10);  % Doppler frequency
-    
-        cfd = zeros(M,1);
-        for m = 1:M
-            cfd(m) = exp(1i*2*pi*(m-1)*d*cos(theta_temp(l).phi));
-        end
-    
-        theta_t = theta_temp;
-        z = zeros(length(fd),1);
-        for i = 1:length(fd)
-            theta_t(1).fdopp = fd(i);
-            z(i) = abs(zfun(xel_last, cfd, u, theta_t(l), sys));
-        end
-        [~, Ifd] = max(z);
-        fd_e = fd(Ifd);
-        theta_temp(l).fdopp = fd_e;
-        
-        % Estimate amplitude amp
-        Pu = sum(u.^2)/length(u);
-        a_e = 1/(I*norm(cfd)^2*lena*Pu)*zfun(xel_last, cfd, u, theta_temp(l), sys);
-        theta_temp(l).amp = a_e;
-        
     end
-    theta_out = theta_temp;
-    
-    for i = 1:L
-        distance = sum(abs(theta_out(l).tau - theta_last(l).tau)) + sum(abs(theta_out(l).amp - theta_last(l).amp));
+    cost = sum(abs(residual(:)).^2);
+    lastCost = history.objective(iteration);
+    relative = abs(lastCost-cost)/max(lastCost, eps*dataEnergy);
+    step = sage_parameter_step(theta_out, previous, cfg);
+    history.objective(iteration+1) = cost;
+    history.relativeImprovement(iteration+1) = relative;
+    history.parameterStep(iteration+1) = step;
+    history.theta{iteration+1} = theta_out;
+    if iteration >= cfg.options.minIter && ...
+            relative <= cfg.options.tolObjective && step <= cfg.options.tolParameter
+        history.converged = true;
+        history.stopReason = 'objectiveAndParameters';
+        break
     end
 end
-    
+history.iterations = iteration;
+history.objective = history.objective(1:iteration+1);
+history.relativeImprovement = history.relativeImprovement(1:iteration+1);
+history.parameterStep = history.parameterStep(1:iteration+1);
+history.theta = history.theta(1:iteration+1);
+history.observationIndices = cfg.idx;
+history.options = cfg.options;
 end
-
