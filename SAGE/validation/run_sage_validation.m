@@ -45,20 +45,18 @@ end
 labels={'Delay absolute error (us)','Angle absolute error (deg)', ...
     'Doppler absolute error (Hz)','Complex gain absolute error'};
 f=figure('Visible','off','Color','w','Position',[100 100 1000 700]);
-tiledlayout(f,2,2,'Padding','loose','TileSpacing','loose');
 for j=1:4
-    nexttile; plot(iterations,errorHistory(:,:,j),'-o','LineWidth',1.2);
+    subplot(2,2,j); plot(iterations,errorHistory(:,:,j),'-o','LineWidth',1.2);
     grid on; xlabel('Full SAGE sweep'); ylabel(labels{j});
     legend('Path 1','Path 2','Path 3','Location','best');
     positive_axes(iterations,errorHistory(:,:,j));
 end
 save_figure(f,outputDir,'parameter_error_vs_iteration');
 f=figure('Visible','off','Color','w','Position',[100 100 1100 450]);
-tiledlayout(f,1,2,'Padding','loose','TileSpacing','loose');
-nexttile; plot(iterations,history.objective,'-o');
+subplot(1,2,1); plot(iterations,history.objective,'-o');
 grid on; xlabel('Full SAGE sweep'); ylabel('Observed residual SSE');
 xlim([-0.1 history.iterations+0.1]);
-nexttile; semilogy(iterations(2:end),max(history.parameterStep(2:end),1e-12),'-o');
+subplot(1,2,2); semilogy(iterations(2:end),max(history.parameterStep(2:end),1e-12),'-o');
 grid on; xlabel('Full SAGE sweep'); ylabel('Maximum normalized parameter change');
 title('Display floor: 10^{-12}; CSV retains exact zeros');
 xlim([0.9 history.iterations+0.1]);
@@ -97,10 +95,9 @@ disp(summary); writetable(summary,fullfile(outputDir,'rmse_vs_snr.csv'));
 writetable(array2table(raw,'VariableNames',{'SNR_dB','Trial','Path','DelayError_s', ...
     'AngleError_rad','DopplerError_Hz','ComplexGainAbsError'}),fullfile(outputDir,'trial_errors.csv'));
 f=figure('Visible','off','Color','w','Position',[100 100 1000 700]);
-tiledlayout(f,2,2,'Padding','loose','TileSpacing','loose');
 unitScale=[1e6,180/pi,1,1];
 for j=1:4
-    nexttile; plot(snrDb,rmse(:,j)*unitScale(j),'-o','LineWidth',1.5);
+    subplot(2,2,j); plot(snrDb,rmse(:,j)*unitScale(j),'-o','LineWidth',1.5);
     grid on; xlabel('Observed SNR (dB)'); ylabel(strrep(labels{j},'absolute error','RMSE'));
     positive_axes(snrDb,rmse(:,j)*unitScale(j));
 end
@@ -148,6 +145,25 @@ T=table((1:numel(truth))',[truth.tau]'*1e6,[estimate.tau]'*1e6, ...
     'TrueGainImag','EstimatedGainReal','EstimatedGainImag','ComplexGainAbsError'});
 end
 function save_figure(f,folder,name)
+% Explicit label margins also work with headless Linux font metrics.
+drawnow;
+ax=findall(f,'Type','axes');
+position=vertcat(ax.Position);
+[~,order]=sortrows([-position(:,2),position(:,1)],[1 2]);
+ax=ax(order);
+if numel(ax)==4
+    slots=[0.13 0.61 0.32 0.30;0.64 0.61 0.32 0.30; ...
+           0.13 0.16 0.32 0.30;0.64 0.16 0.32 0.30];
+else
+    slots=[0.13 0.22 0.31 0.67;0.65 0.22 0.31 0.67];
+end
+for k=1:numel(ax)
+    ax(k).Units='normalized'; ax(k).Position=slots(k,:);
+    ax(k).FontSize=10;
+    ax(k).YLabel.Units='normalized'; ax(k).YLabel.Position=[-0.24 0.5 0];
+    ax(k).XLabel.Units='normalized'; ax(k).XLabel.Position=[0.5 -0.20 0];
+end
+drawnow;
 exportgraphics(f,fullfile(folder,[name '.png']),'Resolution',160);
 exportgraphics(f,fullfile(folder,[name '.pdf']),'ContentType','vector');
 close(f);
