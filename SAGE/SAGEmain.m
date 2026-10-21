@@ -1,3 +1,5 @@
+% Historical saved-data demo; not a known-parameter validation experiment.
+% Use validation/run_sage_validation for reproducible four-parameter tests.
 load('channelSim.mat');
 %% SAGE
 numAnt = 'M';       M = 2;      % Number of receiving antennas

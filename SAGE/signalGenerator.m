@@ -16,7 +16,8 @@ d = sys.d;
 fs = sys.fs;
 
 
-t = linspace(0,round((length(u)-1)/fs), length(u))';
+u = u(:);
+t = (0:numel(u)-1)'/fs; % do not round the duration to an integer second
 s = zeros(length(u), M);
 for m = 1:M
     stemp = zeros(length(u), L);
@@ -30,7 +31,8 @@ for m = 1:M
     s(:,m) = sum(stemp,2);
 end
 
-s_n = s + sqrt(0.2)*randn(length(s),M);
+% Circular complex AWGN with E|w|^2=0.2, split between I and Q.
+s_n = s + sqrt(0.2/2)*(randn(size(s))+1i*randn(size(s)));
 
 end
 

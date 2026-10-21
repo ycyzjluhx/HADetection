@@ -1,4 +1,7 @@
 %% Project simulation.
+% Historical end-to-end demo; requires Communications/DSP toolbox APIs and
+% uses a stochastic Rician channel, not the constant-gain SAGE truth model.
+% For reproducible estimation validation, run validation/run_sage_validation.
 % This file simulates all the procedure that a message frame may go through
 % in the project, including its generation, baseband modulation, passing 
 % through a multipath fading channel, reception in SDR dongle,
@@ -12,9 +15,9 @@ sampleRate20KHz  = 20e3;             % Sample rate of 20K Hz
 maxDopplerShift  = 200;              % Maximum Doppler shift of diffuse components (Hz)
 % delayVector = (0.05:0.05:0.2)*1e-6;  % Discrete delays of four-path channel (s)
 gainVector  = [-0.5 -1 -1.5 -2];     % Average path gains (dB)
-% One millisecond of delay corresponds to about 300 meters of distance
+% One microsecond of delay corresponds to about 300 meters of distance
 % difference. For an indoor enironment, path length is no more than dozens
-% of meters, which means less than 1 millisecond of delay.
+% of meters, which means less than 1 microsecond of delay.
 
 KFactor = 10;            % Linear ratio of specular power to diffuse power
 specDopplerShift = 100;  % Doppler shift of specular component (Hz)

@@ -1,33 +1,13 @@
-function out = zfun( xel, c, u, thetal, sys )
-% z function according to (12) in SAGE paper
-%
-% xel: estimated received corrupted signal along 'l'th path
-% c: c function specified by (1)
-% u: trasmtted signal
-% l: specific path index
-% thetal: (estimated) parameters of the 'l'th path
-
-fs = sys.fs;
-I = sys.I;
-Ta = sys.Ta;    Tf = sys.Tf;
-
-lena = round(Ta*fs);
-lenf = round(Tf*fs);
-
-delay = round(thetal.tau*fs);
-ud = zeros(length(u),1);
-ud(delay+1:end) = u(1:end-delay);
-
-t = 0:1/fs:(length(u)-1)/fs;
-tempsumm = 0;
-for i = 1:I
-
-    temp = conj(ud)'.*exp(-1i*2*pi*thetal.fdopp*t).*(c.'*xel);
-    tempsum = sum(temp((i-1)*lenf+1:(i-1)*lenf+lena));
-    tempsumm = tempsumm + tempsum;
+function [out, energy] = zfun(xel, c, u, thetal, sys)
+%ZFUN z=<unit-gain path,xel> and exact observed unit-gain energy.
+% Gain ML=z/energy; profiled score=abs(z)^2/energy. xel M-by-N; c M-by-1.
+u = u(:); c = c(:);
+assert(isequal(size(xel),[sys.M,numel(u)]),'SAGE:ObservationSize', ...
+    'xel must be M-by-N.');
+assert(numel(c)==sys.M,'SAGE:SteeringSize','c must contain M elements.');
+idx = sage_observation_indices(sys,numel(u));
+ud = sage_delayed(u,thetal.tau,sys.fs);
+b = ud(idx).'.*exp(1i*2*pi*thetal.fdopp*(idx-1)/sys.fs);
+out = sum(conj(b).*(c'*xel(:,idx)));
+energy = sum(abs(c).^2)*sum(abs(b).^2);
 end
-
-out = tempsumm;
-
-end
-
