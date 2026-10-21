@@ -45,17 +45,23 @@ end
 labels={'Delay absolute error (us)','Angle absolute error (deg)', ...
     'Doppler absolute error (Hz)','Complex gain absolute error'};
 f=figure('Visible','off','Color','w','Position',[100 100 1000 700]);
+tiledlayout(f,2,2,'Padding','loose','TileSpacing','loose');
 for j=1:4
-    subplot(2,2,j); plot(iterations,errorHistory(:,:,j),'-o','LineWidth',1.2);
+    nexttile; plot(iterations,errorHistory(:,:,j),'-o','LineWidth',1.2);
     grid on; xlabel('Full SAGE sweep'); ylabel(labels{j});
     legend('Path 1','Path 2','Path 3','Location','best');
+    positive_axes(iterations,errorHistory(:,:,j));
 end
 save_figure(f,outputDir,'parameter_error_vs_iteration');
-f=figure('Visible','off','Color','w','Position',[100 100 1000 400]);
-subplot(1,2,1); semilogy(iterations,max(history.objective,realmin),'-o');
+f=figure('Visible','off','Color','w','Position',[100 100 1100 450]);
+tiledlayout(f,1,2,'Padding','loose','TileSpacing','loose');
+nexttile; plot(iterations,history.objective,'-o');
 grid on; xlabel('Full SAGE sweep'); ylabel('Observed residual SSE');
-subplot(1,2,2); semilogy(iterations(2:end),max(history.parameterStep(2:end),realmin),'-o');
+xlim([-0.1 history.iterations+0.1]);
+nexttile; semilogy(iterations(2:end),max(history.parameterStep(2:end),1e-12),'-o');
 grid on; xlabel('Full SAGE sweep'); ylabel('Maximum normalized parameter change');
+title('Display floor: 10^{-12}; CSV retains exact zeros');
+xlim([0.9 history.iterations+0.1]);
 save_figure(f,outputDir,'convergence');
 
 % SNR is the coherent composite signal power on the actual observed samples.
@@ -91,10 +97,12 @@ disp(summary); writetable(summary,fullfile(outputDir,'rmse_vs_snr.csv'));
 writetable(array2table(raw,'VariableNames',{'SNR_dB','Trial','Path','DelayError_s', ...
     'AngleError_rad','DopplerError_Hz','ComplexGainAbsError'}),fullfile(outputDir,'trial_errors.csv'));
 f=figure('Visible','off','Color','w','Position',[100 100 1000 700]);
+tiledlayout(f,2,2,'Padding','loose','TileSpacing','loose');
 unitScale=[1e6,180/pi,1,1];
 for j=1:4
-    subplot(2,2,j); plot(snrDb,rmse(:,j)*unitScale(j),'-o','LineWidth',1.5);
+    nexttile; plot(snrDb,rmse(:,j)*unitScale(j),'-o','LineWidth',1.5);
     grid on; xlabel('Observed SNR (dB)'); ylabel(strrep(labels{j},'absolute error','RMSE'));
+    positive_axes(snrDb,rmse(:,j)*unitScale(j));
 end
 save_figure(f,outputDir,'rmse_vs_snr');
 
@@ -108,6 +116,13 @@ for l=1:sys.L
     offgrid(l).phi=offgrid(l).phi+angleOffset(l)*pi/180;
     offgrid(l).fdopp=offgrid(l).fdopp+dopplerOffset(l);
 end
+% Control: delay still exactly representable; only angle/Doppler are off-grid.
+gridTruth=offgrid;
+for l=1:sys.L, gridTruth(l).tau=truth(l).tau; end
+Ygrid=sage_reference_signal(u,gridTruth,sys);
+[gridEst,gridHistory]=SAGE(Ygrid,u,SAGEinit(Ygrid,u,sys,opt),sys,opt);
+[gridMatched,gridErrors]=sage_match_paths(gridEst,gridTruth,scales);
+writetable(parameter_table(gridTruth,gridMatched),fullfile(outputDir,'angle_doppler_offgrid.csv'));
 Yoff=sage_reference_signal(u,offgrid,sys,true);
 [offEst,offHistory]=SAGE(Yoff,u,SAGEinit(Yoff,u,sys,opt),sys,opt);
 [offMatched,offErrors]=sage_match_paths(offEst,offgrid,scales);
@@ -116,6 +131,8 @@ results=struct('tests',tests,'sys',sys,'options',opt,'truth',truth,'pilot',u, ..
     'snrDb',snrDb,'nTrials',nTrials,'estimate20dB',estimate,'errors20dB',errors, ...
     'history20dB',history,'errorHistory',errorHistory,'mse',mse,'nmse',nmse, ...
     'converged',converged,'iterations',iters,'summary',summary, ...
+    'angleDopplerOffgridTruth',gridTruth,'angleDopplerOffgridEstimate',gridEst, ...
+    'angleDopplerOffgridErrors',gridErrors,'angleDopplerOffgridHistory',gridHistory, ...
     'offgridTruth',offgrid,'offgridEstimate',offEst,'offgridErrors',offErrors, ...
     'offgridHistory',offHistory,'matlabVersion',version,'release',version('-release'));
 save(fullfile(outputDir,'sage_validation_results.mat'),'results');
@@ -134,4 +151,11 @@ function save_figure(f,folder,name)
 exportgraphics(f,fullfile(folder,[name '.png']),'Resolution',160);
 exportgraphics(f,fullfile(folder,[name '.pdf']),'ContentType','vector');
 close(f);
+end
+function positive_axes(x,y)
+% Error magnitudes cannot be negative; pad endpoints so markers are visible.
+top=max(y(:)); if top==0, top=1; end
+ylim([0,1.15*top]);
+padding=max(0.1,0.03*(max(x)-min(x)));
+xlim([min(x)-padding,max(x)+padding]);
 end
